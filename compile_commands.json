@@ -1,0 +1,16 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/clang",
+      "-c",
+      "-I/opt/homebrew/include/SDL2",
+      "-D_THREAD_SAFE",
+      "-o",
+      "bin/app",
+      "app.c"
+    ],
+    "directory": "/Users/presley/code/flappy",
+    "file": "/Users/presley/code/flappy/app.c",
+    "output": "/Users/presley/code/flappy/bin/app"
+  }
+]
