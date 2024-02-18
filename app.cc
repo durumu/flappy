@@ -1,16 +1,18 @@
 #include <cstdio>
 #include <memory>
+#include <string>
 
 #include "3ps/scope_guard.hpp"
 #include "SDL.h"
 
 constexpr double SCREEN_WIDTH = 640.;
-constexpr double SCREEN_HEIGHT = 480.;
+constexpr double SCREEN_HEIGHT = 640.;
 
 constexpr double FLOOR_Y = (SCREEN_HEIGHT * 9) / 10;
 
 struct Bird {
-    double x;
+    static constexpr double x = SCREEN_WIDTH / 3;
+
     double y;
     double dy;
 
@@ -19,18 +21,16 @@ struct Bird {
     bool alive;
 
     static Bird make_player() {
-        return Bird{.x = SCREEN_WIDTH / 2,
-                    .y = SCREEN_HEIGHT / 2,
-                    .dy = 0.,
-                    .radius = 16.,
-                    .alive = true};
+        return Bird{
+            .y = SCREEN_HEIGHT / 2, .dy = 0., .radius = 16., .alive = true};
     }
 
     void jump() { dy = -10.; }
 
     void step() {
         y += dy;
-        if (y + radius >= FLOOR_Y) {
+        if (y >= FLOOR_Y - radius) {
+            y = FLOOR_Y - radius;
             alive = false;
         }
         dy += 0.5;
@@ -81,7 +81,7 @@ struct Pipes {
 
     void step() {
         for (ptrdiff_t i = start_idx; i != end_idx; i = (i + 1) & (N - 1)) {
-            if (xs[i] >= SCREEN_HEIGHT / 2 && xs[i] + dx <= SCREEN_HEIGHT / 2) {
+            if (xs[i] >= Bird::x && xs[i] + dx <= Bird::x) {
                 ++total_passed;
             }
             xs[i] += dx;
@@ -153,8 +153,6 @@ struct Game {
         }
     }
 
-    int64_t get_score() { return pipes->total_passed; }
-
     void draw(SDL_Surface* surface) {
         // Fill the window with a blue rectangle (the sky)
         SDL_FillRect(surface, nullptr,
@@ -190,6 +188,18 @@ struct Game {
             state = State::Lost;
         }
     }
+
+    std::string title() const {
+        switch (state) {
+            case Game::State::Waiting:
+                return "Press space to start";
+            case Game::State::Lost:
+                return "Game Over! Press any key. Score: " +
+                       std::to_string(pipes->total_passed);
+            case Game::State::Playing:
+                return "Score: " + std::to_string(pipes->total_passed);
+        }
+    }
 };
 
 int main(int argc, char* argv[]) {
@@ -199,9 +209,9 @@ int main(int argc, char* argv[]) {
         return err_code;
     }
 
-    SDL_Window* window = SDL_CreateWindow(
-        "Hello world", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-        SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+    SDL_Window* window = SDL_CreateWindow("Waiting", SDL_WINDOWPOS_UNDEFINED,
+                                          SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH,
+                                          SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
     if (window == nullptr) {
         printf("Error creating window. SDL_Error: %s\n", SDL_GetError());
         return -1;
@@ -211,11 +221,11 @@ int main(int argc, char* argv[]) {
 
     Game game{};
 
-    constexpr int32_t frameDelay = 1000 / 60;  // 60 fps
+    constexpr int32_t frameDelay = 1000 / 60;  // will limit to 60 fps
     while (true) {
         int32_t frameStart = SDL_GetTicks();
 
-        // Handle events.
+        // Handle events
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             switch (e.type) {
@@ -235,12 +245,16 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Update state
         game.step();
-        game.draw(screen_surface);
 
+        SDL_SetWindowTitle(window, game.title().c_str());
+
+        // Render
+        game.draw(screen_surface);
         SDL_UpdateWindowSurface(window);
 
-        // This keeps us from displaying more frames than 60/Second
+        // Limit FPS
         if (int32_t frameTime = SDL_GetTicks() - frameStart;
             frameDelay > frameTime) {
             SDL_Delay(frameDelay - frameTime);
