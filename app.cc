@@ -54,8 +54,10 @@ struct Pipes {
     static constexpr size_t N = 256;
     static_assert(!(N & (N - 1)), "N must be power of two");
 
-    static constexpr double width = 48;
-    static constexpr double dx = -1;
+    static constexpr int width = 48;
+    char _padding[4];
+
+    static constexpr double dx = -3;
 
     ptrdiff_t start_idx{};
     ptrdiff_t end_idx{};
@@ -63,8 +65,8 @@ struct Pipes {
     int64_t total_passed{};
 
     double xs[N];
-    double gap_top_ys[N];
-    double gap_bottom_ys[N];
+    int32_t gap_top_ys[N];
+    int32_t gap_bottom_ys[N];
 
     size_t size() { return (end_idx - start_idx) & (N - 1); }
 
@@ -90,10 +92,31 @@ struct Pipes {
         }
     }
 
-    void draw(SDL_Surface* surface) {}
+    void draw(SDL_Surface* surface) {
+        for (ptrdiff_t i = start_idx; i != end_idx; i = (i + 1) & (N - 1)) {
+            SDL_Rect top_rect{
+                .x = static_cast<int>(xs[i]) - width / 2,
+                .y = 0,
+                .w = width,
+                .h = gap_top_ys[i],
+            };
+
+            SDL_Rect bottom_rect{
+                .x = static_cast<int>(xs[i]) - width / 2,
+                .y = gap_bottom_ys[i],
+                .w = width,
+                .h = static_cast<int>(SCREEN_HEIGHT) - gap_bottom_ys[i],
+            };
+
+            SDL_FillRect(surface, &top_rect,
+                         SDL_MapRGB(surface->format, 0x45, 0xa6, 0x2d));
+            SDL_FillRect(surface, &bottom_rect,
+                         SDL_MapRGB(surface->format, 0x45, 0xa6, 0x2d));
+        }
+    }
 
     bool collides_with(Bird& bird) {
-        // TODO
+        // TODO fill this in
         return false;
     }
 };
@@ -115,6 +138,7 @@ struct Game {
                 player.jump();
             } else {
                 started = true;
+                pipes->spawn(SCREEN_HEIGHT / 3, 2 * SCREEN_HEIGHT / 3);
             }
         }
     }
