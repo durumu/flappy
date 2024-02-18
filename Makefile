@@ -1,16 +1,16 @@
 # Makefile
 
 # Compiler to use
-CC = clang
+CXX = clang++
 
 # Source files
-SRC = app.c
+SRC = app.cc
 
 # Include directories
 INCLUDES = -I/opt/homebrew/include/SDL2
 
 # Compiler flags
-CFLAGS = -D_THREAD_SAFE
+CXXFLAGS = -O2 -Wall -std=c++20 -D_THREAD_SAFE
 
 # Output executable name
 TARGET = app
@@ -30,7 +30,7 @@ $(BUILD_DIR):
 
 # Rule for building the target
 $(BUILD_TARGET): $(SRC) | $(BUILD_DIR)
-	$(CC) $(SRC) $(INCLUDES) $(CFLAGS) -o $(BUILD_TARGET)
+	$(CXX) $(SRC) $(INCLUDES) $(CXXFLAGS) -o $(BUILD_TARGET)
 
 # Clean rule
 clean:
