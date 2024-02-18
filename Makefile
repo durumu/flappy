@@ -9,6 +9,9 @@ SRC = app.cc
 # Include directories
 INCLUDES = -I/opt/homebrew/include/SDL2
 
+# Include directories
+LINKER_FLAGS = -lSDL2
+
 # Compiler flags
 CXXFLAGS = -O2 -Wall -std=c++20 -D_THREAD_SAFE
 
@@ -30,7 +33,7 @@ $(BUILD_DIR):
 
 # Rule for building the target
 $(BUILD_TARGET): $(SRC) | $(BUILD_DIR)
-	$(CXX) $(SRC) $(INCLUDES) $(CXXFLAGS) -o $(BUILD_TARGET)
+	$(CXX) $(SRC) $(INCLUDES) $(LINKER_FLAGS) $(CXXFLAGS) -o $(BUILD_TARGET)
 
 # Clean rule
 clean:
