@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <memory>
+#include <random>
 #include <string>
 
 #include "3ps/scope_guard.hpp"
@@ -49,15 +50,42 @@ struct Bird {
     }
 };
 
+struct PipeSpawner {
+    std::random_device rd;
+    std::mt19937 rng;
+
+    std::uniform_int_distribution<> ticks_till_next_spawn_dist{120, 180};
+    std::uniform_int_distribution<> gap_top_y_dist{
+        static_cast<int32_t>(SCREEN_HEIGHT * 0.1),
+        static_cast<int32_t>(SCREEN_HEIGHT * 0.6),
+    };
+
+    int32_t steps_left;
+
+    PipeSpawner() : rd{}, rng{rd()}, steps_left(0) {}
+
+    bool step() {
+        // Returns true if we need to spawn.
+        if (--steps_left <= 0) {
+            steps_left = ticks_till_next_spawn_dist(rng);
+            return true;
+        }
+        return false;
+    }
+
+    int32_t generate_gap_top_y() { return gap_top_y_dist(rng); }
+};
+
 struct Pipes {
     // N-sized buffer of pipes.
     static constexpr size_t N = 256;
     static_assert(!(N & (N - 1)), "N must be power of two");
 
     static constexpr int width = 48;
-    char _padding[4];
 
     static constexpr double dx = -3;
+
+    static constexpr int gap_size = static_cast<int>(SCREEN_HEIGHT / 3);
 
     ptrdiff_t start_idx{};
     ptrdiff_t end_idx{};
@@ -66,20 +94,26 @@ struct Pipes {
 
     double xs[N];
     int32_t gap_top_ys[N];
-    int32_t gap_bottom_ys[N];
+
+    PipeSpawner spawner{};
 
     size_t size() { return (end_idx - start_idx) & (N - 1); }
 
-    void spawn(int32_t gap_top_y, int32_t gap_bottom_y) {
+    void spawn(int32_t gap_top_y) {
         // Spawn a new pipe just off-screen.
         // If there are already N pipes, the left-most one will be deleted.
         xs[end_idx] = SCREEN_WIDTH + width;
         gap_top_ys[end_idx] = gap_top_y;
-        gap_bottom_ys[end_idx] = gap_bottom_y;
         end_idx = (end_idx + 1) & (N - 1);
     }
 
     void step() {
+        // Potentially spawn pipes
+        if (spawner.step()) {
+            spawn(spawner.generate_gap_top_y());
+        }
+
+        // Update positions.
         for (ptrdiff_t i = start_idx; i != end_idx; i = (i + 1) & (N - 1)) {
             if (xs[i] >= Bird::x && xs[i] + dx <= Bird::x) {
                 ++total_passed;
@@ -101,11 +135,12 @@ struct Pipes {
                 .h = gap_top_ys[i],
             };
 
+            int32_t gap_bottom_y = gap_top_ys[i] + gap_size;
             SDL_Rect bottom_rect{
                 .x = static_cast<int>(xs[i]) - width / 2,
-                .y = gap_bottom_ys[i],
+                .y = gap_bottom_y,
                 .w = width,
-                .h = static_cast<int>(SCREEN_HEIGHT) - gap_bottom_ys[i],
+                .h = static_cast<int>(SCREEN_HEIGHT) - gap_bottom_y,
             };
 
             SDL_FillRect(surface, &top_rect,
@@ -142,7 +177,6 @@ struct Game {
             switch (state) {
                 case State::Waiting:
                     state = State::Playing;
-                    pipes->spawn(SCREEN_HEIGHT / 3, 2 * SCREEN_HEIGHT / 3);
                     break;
                 case State::Playing:
                     player.jump();
