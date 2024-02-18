@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdio>
 #include <memory>
 #include <random>
@@ -37,7 +38,7 @@ struct Bird {
         dy += 0.5;
     }
 
-    void draw(SDL_Surface* surface) {
+    void draw(SDL_Surface* surface) const {
         // TODO: draw this nicer
         SDL_Rect rect{
             .x = static_cast<int>(x - radius),
@@ -75,6 +76,12 @@ struct PipeSpawner {
 
     int32_t generate_gap_top_y() { return gap_top_y_dist(rng); }
 };
+
+double squared_dist(SDL_Rect& rect, double x, double y) {
+    double dx = std::max({rect.x - x, 0., x - (rect.x + rect.w)});
+    double dy = std::max({rect.y - y, 0., y - (rect.y + rect.h)});
+    return dx * dx + dy * dy;
+}
 
 struct Pipes {
     // N-sized buffer of pipes.
@@ -126,32 +133,47 @@ struct Pipes {
         }
     }
 
-    void draw(SDL_Surface* surface) {
+    SDL_Rect top_rect(ptrdiff_t idx) const {
+        return SDL_Rect{.x = static_cast<int>(xs[idx]),
+                        .y = 0,
+                        .w = width,
+                        .h = gap_top_ys[idx]};
+    }
+
+    SDL_Rect bottom_rect(ptrdiff_t idx) const {
+        int32_t gap_bottom_y = gap_top_ys[idx] + gap_size;
+        return SDL_Rect{
+            .x = static_cast<int>(xs[idx]),
+            .y = gap_bottom_y,
+            .w = width,
+            .h = static_cast<int>(SCREEN_HEIGHT) - gap_bottom_y,
+        };
+    }
+
+    void draw(SDL_Surface* surface) const {
         for (ptrdiff_t i = start_idx; i != end_idx; i = (i + 1) & (N - 1)) {
-            SDL_Rect top_rect{
-                .x = static_cast<int>(xs[i]) - width / 2,
-                .y = 0,
-                .w = width,
-                .h = gap_top_ys[i],
-            };
-
-            int32_t gap_bottom_y = gap_top_ys[i] + gap_size;
-            SDL_Rect bottom_rect{
-                .x = static_cast<int>(xs[i]) - width / 2,
-                .y = gap_bottom_y,
-                .w = width,
-                .h = static_cast<int>(SCREEN_HEIGHT) - gap_bottom_y,
-            };
-
-            SDL_FillRect(surface, &top_rect,
+            SDL_Rect top = top_rect(i);
+            SDL_Rect bottom = bottom_rect(i);
+            SDL_FillRect(surface, &top,
                          SDL_MapRGB(surface->format, 0x45, 0xa6, 0x2d));
-            SDL_FillRect(surface, &bottom_rect,
+            SDL_FillRect(surface, &bottom,
                          SDL_MapRGB(surface->format, 0x45, 0xa6, 0x2d));
         }
     }
 
     bool collides_with(Bird& bird) {
-        // TODO fill this in
+        for (ptrdiff_t i = start_idx; i != end_idx; i = (i + 1) & (N - 1)) {
+            SDL_Rect top = top_rect(i);
+            SDL_Rect bottom = bottom_rect(i);
+
+            double squared_radius = bird.radius * bird.radius;
+            if (squared_dist(top, bird.x, bird.y) <= squared_radius) {
+                return true;
+            }
+            if (squared_dist(bottom, bird.x, bird.y) <= squared_radius) {
+                return true;
+            }
+        }
         return false;
     }
 };
