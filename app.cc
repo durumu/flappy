@@ -22,7 +22,7 @@ struct Bird {
         return Bird{.x = SCREEN_WIDTH / 2,
                     .y = SCREEN_HEIGHT / 2,
                     .dy = 0.,
-                    .radius = 32.,
+                    .radius = 16.,
                     .alive = true};
     }
 
@@ -39,10 +39,10 @@ struct Bird {
     void draw(SDL_Surface* surface) {
         // TODO: draw this nicer
         SDL_Rect rect{
-            .x = static_cast<int>(x - radius / 2),
-            .y = static_cast<int>(y - radius / 2),
-            .w = static_cast<int>(radius),
-            .h = static_cast<int>(radius),
+            .x = static_cast<int>(x - radius),
+            .y = static_cast<int>(y - radius),
+            .w = static_cast<int>(radius * 2),
+            .h = static_cast<int>(radius * 2),
         };
         SDL_FillRect(surface, &rect,
                      SDL_MapRGB(surface->format, 0xf5, 0x8b, 0x11));
@@ -122,23 +122,33 @@ struct Pipes {
 };
 
 struct Game {
-    bool started;
+    enum class State : uint16_t {
+        Waiting = 0,
+        Lost = 1,
+        Playing = 2,
+    };
+    State state;
 
     Bird player;
     std::unique_ptr<Pipes> pipes;
 
     Game()
-        : started(false),
+        : state(State::Waiting),
           player(Bird::make_player()),
           pipes(std::make_unique<Pipes>()) {}
 
     void handle_keydown(SDL_KeyboardEvent& e) {
         if (e.keysym.sym == SDLK_SPACE) {
-            if (started) {
-                player.jump();
-            } else {
-                started = true;
-                pipes->spawn(SCREEN_HEIGHT / 3, 2 * SCREEN_HEIGHT / 3);
+            switch (state) {
+                case State::Waiting:
+                    state = State::Playing;
+                    pipes->spawn(SCREEN_HEIGHT / 3, 2 * SCREEN_HEIGHT / 3);
+                    break;
+                case State::Playing:
+                    player.jump();
+                    break;
+                case State::Lost:
+                    break;
             }
         }
     }
@@ -152,10 +162,20 @@ struct Game {
 
         player.draw(surface);
         pipes->draw(surface);
+
+        // Draw the floor
+        SDL_Rect floor_rect{
+            .x = 0,
+            .y = static_cast<int>(FLOOR_Y),
+            .w = static_cast<int>(SCREEN_WIDTH),
+            .h = static_cast<int>(SCREEN_HEIGHT - FLOOR_Y),
+        };
+        SDL_FillRect(surface, &floor_rect,
+                     SDL_MapRGB(surface->format, 0x4a, 0x36, 0x02));
     }
 
     void step() {
-        if (!started) {
+        if (state != State::Playing) {
             return;
         }
 
@@ -164,6 +184,10 @@ struct Game {
 
         if (pipes->collides_with(player)) {
             player.alive = false;
+        }
+
+        if (!player.alive) {
+            state = State::Lost;
         }
     }
 };
@@ -199,7 +223,12 @@ int main(int argc, char* argv[]) {
                     SDL_DestroyWindow(window);
                     return 0;
                 case SDL_KEYDOWN:
-                    game.handle_keydown(e.key);
+                    if (game.state == Game::State::Lost) {
+                        // New game.
+                        game = Game{};
+                    } else {
+                        game.handle_keydown(e.key);
+                    }
                     break;
                 default:
                     break;
