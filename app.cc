@@ -4,79 +4,48 @@
 #include "3ps/scope_guard.hpp"
 #include "SDL.h"
 
-struct fix64 {
-    // Fixed point arithmetic
-    static constexpr uint32_t DECIMAL_PLACE = 16;
+constexpr double SCREEN_WIDTH = 640.;
+constexpr double SCREEN_HEIGHT = 480.;
 
-    int64_t val;
-
-    // Operators
-    constexpr friend fix64 operator+(fix64 lhs, fix64 rhs) {
-        return fix64{lhs.val + rhs.val};
-    }
-
-    constexpr friend fix64 operator*(fix64 lhs, fix64 rhs) {
-        return fix64{lhs.val + rhs.val};
-    }
-    constexpr friend fix64 operator*(fix64 lhs, fix64 rhs) {
-        return fix64{lhs.val + rhs.val};
-    }
-
-    constexpr friend fix64 operator/(fix64 lhs, fix64 rhs) {
-        return fix64{lhs.val / rhs.val};
-    }
-    constexpr friend fix64 operator/(fix64 lhs, int64_t rhs) {
-        return fix64{lhs.val / rhs};
-    }
-
-    // Conversion
-    static constexpr fix64 from(int32_t _val) {
-        return fix64{_val << DECIMAL_PLACE};
-    }
-    static constexpr fix64 from(int64_t _val) {
-        return fix64{_val << DECIMAL_PLACE};
-    }
-    static constexpr fix64 from(double _val) {
-        return fix64{static_cast<int64_t>(_val * (1 << DECIMAL_PLACE))};
-    }
-
-    constexpr int64_t truncate() const { return val >> DECIMAL_PLACE; }
-    constexpr int64_t round() const {
-        // If the bit immediately after the decimal place is set, round up.
-        constexpr int HALF_BIT = (1 << (DECIMAL_PLACE - 1));
-        return truncate() + ((val & HALF_BIT) != 0);
-    }
-};
-
-constexpr fix64 SCREEN_WIDTH = fix64::from(640);
-constexpr fix64 SCREEN_HEIGHT = fix64::from(480);
-
-constexpr int64_t FLOOR_Y = (SCREEN_HEIGHT * 9) / 10;
+constexpr double FLOOR_Y = (SCREEN_HEIGHT * 9) / 10;
 
 struct Bird {
-    fix64 x;
-    fix64 y;
-    fix64 dy;
+    double x;
+    double y;
+    double dy;
 
-    fix64 radius;
+    double radius;
 
     bool alive;
 
     static Bird make_player() {
         return Bird{.x = SCREEN_WIDTH / 2,
                     .y = SCREEN_HEIGHT / 2,
-                    .dy = 0,
-                    .radius = 32,
+                    .dy = 0.,
+                    .radius = 32.,
                     .alive = true};
     }
 
-    void jump() { dy = -20 << FIX; }
+    void jump() { dy = -10.; }
 
     void step() {
         y += dy;
         if (y + radius >= FLOOR_Y) {
             alive = false;
         }
+        dy += 0.5;
+    }
+
+    void draw(SDL_Surface* surface) {
+        // TODO: draw this nicer
+        SDL_Rect rect{
+            .x = static_cast<int>(x - radius / 2),
+            .y = static_cast<int>(y - radius / 2),
+            .w = static_cast<int>(radius),
+            .h = static_cast<int>(radius),
+        };
+        SDL_FillRect(surface, &rect,
+                     SDL_MapRGB(surface->format, 0xf5, 0x8b, 0x11));
     }
 };
 
@@ -85,15 +54,19 @@ struct Pipes {
     static constexpr size_t N = 256;
     static_assert(!(N & (N - 1)), "N must be power of two");
 
-    static constexpr uint64_t width = 48 << FIX;
-    static constexpr uint64_t dx = -1 << FIX;
+    static constexpr double width = 48;
+    static constexpr double dx = -1;
 
-    ptrdiff_t start_idx;
-    ptrdiff_t end_idx;
+    ptrdiff_t start_idx{};
+    ptrdiff_t end_idx{};
 
-    int64_t xs[N];
-    int64_t gap_top_ys[N];
-    int64_t gap_bottom_ys[N];
+    int64_t total_passed{};
+
+    double xs[N];
+    double gap_top_ys[N];
+    double gap_bottom_ys[N];
+
+    size_t size() { return (end_idx - start_idx) & (N - 1); }
 
     void spawn(int32_t gap_top_y, int32_t gap_bottom_y) {
         // Spawn a new pipe just off-screen.
@@ -106,24 +79,68 @@ struct Pipes {
 
     void step() {
         for (ptrdiff_t i = start_idx; i != end_idx; i = (i + 1) & (N - 1)) {
+            if (xs[i] >= SCREEN_HEIGHT / 2 && xs[i] + dx <= SCREEN_HEIGHT / 2) {
+                ++total_passed;
+            }
             xs[i] += dx;
-            start_idx = (start_idx + 1) & (N - 1);
+            if (xs[i] <= -width) {
+                // despawn the pipe
+                start_idx = (start_idx + 1) & (N - 1);
+            }
         }
+    }
+
+    void draw(SDL_Surface* surface) {}
+
+    bool collides_with(Bird& bird) {
+        // TODO
+        return false;
     }
 };
 
 struct Game {
-    int32_t score;
+    bool started;
+
     Bird player;
     std::unique_ptr<Pipes> pipes;
 
-    void handle_input() {}
+    Game()
+        : started(false),
+          player(Bird::make_player()),
+          pipes(std::make_unique<Pipes>()) {}
 
-    void draw(SDL_Surface* surface) {}
+    void handle_keydown(SDL_KeyboardEvent& e) {
+        if (e.keysym.sym == SDLK_SPACE) {
+            if (started) {
+                player.jump();
+            } else {
+                started = true;
+            }
+        }
+    }
+
+    int64_t get_score() { return pipes->total_passed; }
+
+    void draw(SDL_Surface* surface) {
+        // Fill the window with a blue rectangle (the sky)
+        SDL_FillRect(surface, nullptr,
+                     SDL_MapRGB(surface->format, 0x11, 0xb1, 0xf5));
+
+        player.draw(surface);
+        pipes->draw(surface);
+    }
 
     void step() {
+        if (!started) {
+            return;
+        }
+
         player.step();
         pipes->step();
+
+        if (pipes->collides_with(player)) {
+            player.alive = false;
+        }
     }
 };
 
@@ -144,7 +161,12 @@ int main(int argc, char* argv[]) {
 
     SDL_Surface* screen_surface = SDL_GetWindowSurface(window);
 
+    Game game{};
+
+    constexpr int32_t frameDelay = 1000 / 60;  // 60 fps
     while (true) {
+        int32_t frameStart = SDL_GetTicks();
+
         // Handle events.
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -153,14 +175,22 @@ int main(int argc, char* argv[]) {
                     SDL_DestroyWindow(window);
                     return 0;
                 case SDL_KEYDOWN:
-                    ... default : break;
+                    game.handle_keydown(e.key);
+                    break;
+                default:
+                    break;
             }
         }
 
-        // Fill the window with a white rectangle
-        SDL_FillRect(screen_surface, NULL,
-                     SDL_MapRGB(screen_surface->format, 0xFF, 0xFF, 0xFF));
+        game.step();
+        game.draw(screen_surface);
 
         SDL_UpdateWindowSurface(window);
+
+        // This keeps us from displaying more frames than 60/Second
+        if (int32_t frameTime = SDL_GetTicks() - frameStart;
+            frameDelay > frameTime) {
+            SDL_Delay(frameDelay - frameTime);
+        }
     }
 }
